@@ -9,7 +9,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace Mas.Infrastructure.Service
+namespace Mas.Infrastructure.Common.Service
 {
     public class Admin : Mas.Schema.Service.IAdmin
     {
