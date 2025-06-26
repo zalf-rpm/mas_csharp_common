@@ -24,7 +24,8 @@ namespace Mas.Infrastructure.Common
 
         public void Dispose() => Dispose(true);
 
-        public static string GetLocalIPAddress(string connectToHost = "8.8.8.8", int connectToPort = 53)
+        //public static string GetLocalIPAddress(string connectToHost = "8.8.8.8", int connectToPort = 53)
+        public static string GetLocalIPAddress(string connectToHost = "dns.google", int connectToPort = 443)
         {
             var localIP = "127.0.0.1";
             try
