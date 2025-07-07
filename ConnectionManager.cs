@@ -24,7 +24,6 @@ namespace Mas.Infrastructure.Common
 
         public void Dispose() => Dispose(true);
 
-        //public static string GetLocalIPAddress(string connectToHost = "8.8.8.8", int connectToPort = 53)
         public static string GetLocalIPAddress(string connectToHost = "dns.google", int connectToPort = 443)
         {
             var localIP = "127.0.0.1";
@@ -90,6 +89,7 @@ namespace Mas.Infrastructure.Common
                     var addressPortAndRest = vatIdAndRest[^1].Split("/");
                     if (addressPortAndRest.Length > 0) {
                         addressPort = addressPortAndRest[0];
+                        addressPort = addressPort.Replace("localhost", "127.0.0.1");
                         var addressAndPort = addressPort.Split(":");
                         if (addressAndPort.Length > 0) address = addressAndPort[0];
                         if (addressAndPort.Length > 1) port = Int32.Parse(addressAndPort[1]);
