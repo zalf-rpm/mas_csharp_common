@@ -96,7 +96,7 @@ namespace Mas.Infrastructure.Common
             return $"capnp://{vatIdBase64Url}@{TcpHost}:{TcpPort}/{srToken}";
         }
 
-        static public string SturdyRefStr(P.SturdyRef sturdyRef) {
+        public static string SturdyRefStr(P.SturdyRef sturdyRef) {
             var id = sturdyRef.Vat.Id;
             var vatIdBytes = new byte[4 * 8];
             BitConverter.GetBytes(id.PublicKey0).CopyTo(vatIdBytes, 0);
