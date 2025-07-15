@@ -3,6 +3,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Mas.Infrastructure.Common
@@ -99,30 +100,65 @@ namespace Mas.Infrastructure.Common
             }
 
             if (addressPort.Length <= 0) return null;
-            try {
-                //Console.WriteLine("ConnectionManager: ThreadId: " + Thread.CurrentThread.ManagedThreadId);
-                //var con = new TcpRpcClient(address, port);
-                var con = _connections.GetOrAdd(addressPort, new TcpRpcClient(address, port));
-                await con.WhenConnected;
-                if (!string.IsNullOrEmpty(srToken)) {
-                    var restorer = con.GetMain<Schema.Persistence.IRestorer>();
-                    //var srTokenArr = Convert.FromBase64String(Restorer.FromBase64Url(srToken));
-                    //var srToken = System.Text.Encoding.UTF8.GetString(srTokenArr);
-                    var cap = await restorer.Restore(new Schema.Persistence.Restorer.RestoreParams { 
-                        LocalRef=new Schema.Persistence.SturdyRef.Token { Text = srToken }});
-                    return cap.Cast<TRemoteInterface>(true);
-                } else {
+
+            var retryCount = 3;
+            while (retryCount > 0)
+            {
+                try
+                {
+                    var con = _connections.GetOrAdd(addressPort, new TcpRpcClient(address, port));
+                    if (con.WhenConnected == null) return null;
+                    await con.WhenConnected;
+                    Console.WriteLine(
+                        $"ConnectionManager: ThreadId: {Thread.CurrentThread.ManagedThreadId} connected");
+                    Console.WriteLine(
+                        $"ConnectionManager: ThreadId: {Thread.CurrentThread.ManagedThreadId} trying to restore srToken: {srToken}");
+                    if (!string.IsNullOrEmpty(srToken))
+                    {
+                        var restorer = con.GetMain<Schema.Persistence.IRestorer>();
+                        //var srTokenArr = Convert.FromBase64String(Restorer.FromBase64Url(srToken));
+                        //var srToken = System.Text.Encoding.UTF8.GetString(srTokenArr);
+                        using var cts = new CancellationTokenSource();
+                        cts.CancelAfter((4-retryCount)*1000);
+                        var cap = await restorer.Restore(new Schema.Persistence.Restorer.RestoreParams
+                        {
+                            LocalRef = new Schema.Persistence.SturdyRef.Token { Text = srToken }
+                        }, cts.Token);
+                        Console.WriteLine(
+                            $"ConnectionManager: ThreadId: {Thread.CurrentThread.ManagedThreadId} received restorer cap");
+                        var cast_cap = cap.Cast<TRemoteInterface>(true);
+                        Console.WriteLine(
+                            $"ConnectionManager: ThreadId: {Thread.CurrentThread.ManagedThreadId} casted cap to requested interface");
+                        return cast_cap;
+                    }
+
                     var bootstrap = con.GetMain<TRemoteInterface>();
-                    //Console.WriteLine("ConnectionManager: current TaskSchedulerId: " + TaskScheduler.Current.Id);
+                    Console.WriteLine(
+                        $"ConnectionManager: ThreadId: {Thread.CurrentThread.ManagedThreadId} returning bootstrap cap");
                     return bootstrap;
                 }
-            }
-            catch(ArgumentOutOfRangeException) {
-                _connections.TryRemove(addressPort, out _);
-            }
-            catch(System.Exception e) {
-                _connections.TryRemove(addressPort, out _);
-                throw;
+                catch (ArgumentOutOfRangeException aoore)
+                {
+                    Console.WriteLine(
+                        $"ConnectionManager: ThreadId: {Thread.CurrentThread.ManagedThreadId} ArgumentOutOfRangeException: {aoore.Message}");
+                    _connections.TryRemove(addressPort, out _);
+                }
+                catch (Capnp.Rpc.RpcException rpce)
+                {
+                    Console.WriteLine(
+                        $"ConnectionManager: ThreadId: {Thread.CurrentThread.ManagedThreadId} RpcException: {rpce.Message}");
+                    _connections.TryRemove(addressPort, out _);
+                }
+                catch (System.Exception e)
+                {
+                    Console.WriteLine(
+                        $"ConnectionManager: ThreadId: {Thread.CurrentThread.ManagedThreadId} System.Exception: {e.Message}");
+                    _connections.TryRemove(addressPort, out _);
+                    throw;
+                }
+                retryCount--;
+                Console.WriteLine(
+                    $"ConnectionManager: ThreadId: {Thread.CurrentThread.ManagedThreadId} retrying to connect for {retryCount} more times");
             }
             return null;
         }

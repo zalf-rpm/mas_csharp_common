@@ -209,7 +209,7 @@ namespace Mas.Infrastructure.Common
             //foreach (var sr2p in _srToken2Capability)
             //    sr2p.Value?.Dispose();
 
-            Console.WriteLine("Dispose");
+            Console.WriteLine("Restorer: Dispose");
         }
     }
 }
