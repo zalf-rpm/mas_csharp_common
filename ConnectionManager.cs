@@ -10,18 +10,14 @@ namespace Mas.Infrastructure.Common
 {
     public class ConnectionManager : IDisposable
     {
-        private ConcurrentDictionary<string, TcpRpcClient> _connections = new();
+        private readonly ConcurrentDictionary<string, TcpRpcClient> _connections = new();
         private TcpRpcServer _server;
 
         public Restorer Restorer { get; set; }
 
-        public ushort Port => (ushort)_server.Port;
+        public bool NoConnectionCaching { get; set; } = true;
 
-        public ConnectionManager(Restorer restorer = null) 
-        {
-            Restorer = restorer;
-            //Console.WriteLine("ConnectionManager created");
-        }
+        public ushort Port => (ushort)_server.Port;
 
         public void Dispose() => Dispose(true);
 
@@ -106,7 +102,9 @@ namespace Mas.Infrastructure.Common
             {
                 try
                 {
-                    var con = _connections.GetOrAdd(addressPort, new TcpRpcClient(address, port));
+                    var con = NoConnectionCaching
+                        ? new TcpRpcClient(address, port)
+                        : _connections.GetOrAdd(addressPort, new TcpRpcClient(address, port));
                     if (con.WhenConnected == null) return null;
                     await con.WhenConnected;
                     Console.WriteLine(
