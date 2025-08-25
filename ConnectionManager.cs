@@ -26,16 +26,18 @@ namespace Mas.Infrastructure.Common
             var localIP = "127.0.0.1";
             try
             {
-                using Socket socket = new (AddressFamily.InterNetwork, SocketType.Stream, 0);
+                using Socket socket = new(AddressFamily.InterNetwork, SocketType.Stream, 0);
                 socket.Connect(connectToHost, connectToPort);
                 var endPoint = socket.LocalEndPoint as IPEndPoint;
                 localIP = endPoint.Address.ToString();
-            } catch(System.Exception e) { 
+            }
+            catch (System.Exception e)
+            {
                 Console.WriteLine(e.Message);
             }
             return localIP;
         }
-        
+
         protected virtual void Dispose(bool disposing)
         {
             //Console.WriteLine("Disposing ConnectionManager");
@@ -47,18 +49,18 @@ namespace Mas.Infrastructure.Common
                 {
                     con?.Dispose();
                 }
-                catch(System.Exception e)
+                catch (System.Exception e)
                 {
                     Console.WriteLine("Exception thrown while disposing connection (TcpRpcClient): " + key + " Exception: " + e.Message);
                 }
             }
-            
+
             try
             {
                 //Console.WriteLine("ConnectionManager: Disposing Capnp.Rpc.TcpRpcServer");
                 _server?.Dispose();
             }
-            catch(System.Exception e)
+            catch (System.Exception e)
             {
                 Console.WriteLine("Exception thrown while disposing TcpRpcServer. Exception: " + e.Message);
             }
@@ -78,13 +80,16 @@ namespace Mas.Infrastructure.Common
 
             var rest = sturdyRef[8..];
             // is unix domain socket
-            if (rest.StartsWith("/")) rest = rest[1..];  
-            else {
+            if (rest.StartsWith("/")) rest = rest[1..];
+            else
+            {
                 var vatIdAndRest = rest.Split("@");
                 if (vatIdAndRest.Length > 0) vatIdBase64Url = vatIdAndRest[0];
-                if (vatIdAndRest[^1].Contains('/')) {
+                if (vatIdAndRest[^1].Contains('/'))
+                {
                     var addressPortAndRest = vatIdAndRest[^1].Split("/");
-                    if (addressPortAndRest.Length > 0) {
+                    if (addressPortAndRest.Length > 0)
+                    {
                         addressPort = addressPortAndRest[0];
                         addressPort = addressPort.Replace("localhost", "127.0.0.1");
                         var addressAndPort = addressPort.Split(":");
@@ -96,6 +101,22 @@ namespace Mas.Infrastructure.Common
             }
 
             if (addressPort.Length <= 0) return null;
+
+            // Resolve hostname to IP (no-op if already an IP)
+            if (!IPAddress.TryParse(address, out _))
+            {
+                try
+                {
+                    var ips = await Dns.GetHostAddressesAsync(address);
+                    var ipv4 = Array.Find(ips, ip => ip.AddressFamily == AddressFamily.InterNetwork);
+                    address = (ipv4 ?? ips[0]).ToString();
+                }
+                catch (System.Exception ex)
+                {
+                    Console.WriteLine($"ConnectionManager: failed to resolve '{address}': {ex.Message}");
+                    return null;
+                }
+            }
 
             var retryCount = 3;
             while (retryCount > 0)
@@ -117,7 +138,7 @@ namespace Mas.Infrastructure.Common
                         //var srTokenArr = Convert.FromBase64String(Restorer.FromBase64Url(srToken));
                         //var srToken = System.Text.Encoding.UTF8.GetString(srTokenArr);
                         using var cts = new CancellationTokenSource();
-                        cts.CancelAfter((4-retryCount)*1000);
+                        cts.CancelAfter((4 - retryCount) * 1000);
                         var cap = await restorer.Restore(new Schema.Persistence.Restorer.RestoreParams
                         {
                             LocalRef = new Schema.Persistence.SturdyRef.Token { Text = srToken }
