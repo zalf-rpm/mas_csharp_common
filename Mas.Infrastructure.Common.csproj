@@ -1,20 +1,20 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
-	<PropertyGroup>
-		<TargetFramework>net9.0</TargetFramework>
-	</PropertyGroup>
+    <PropertyGroup>
+        <TargetFramework>net9.0</TargetFramework>
+    </PropertyGroup>
 
-	<ItemGroup>
-		<PackageReference Include="BlazorGoogleMaps" Version="4.7.6" />
-		<PackageReference Include="MudBlazor" Version="7.6.0" />
-		<PackageReference Include="System.Collections.Concurrent" Version="4.3.0" />
-		<PackageReference Include="NSec.Cryptography" Version="24.4.0" />
-	</ItemGroup>
+    <ItemGroup>
+        <PackageReference Include="BlazorGoogleMaps" Version="4.7.6"/>
+        <PackageReference Include="MudBlazor" Version="7.6.0"/>
+        <PackageReference Include="System.Collections.Concurrent" Version="4.3.0"/>
+        <PackageReference Include="NSec.Cryptography" Version="24.4.0"/>
+    </ItemGroup>
 
-	<ItemGroup>
-		<ProjectReference
-			Include="..\..\lib\capnproto-dotnetcore\Capnp.Net.Runtime\Capnp.Net.Runtime.csproj" />
-		<ProjectReference
-				Include="..\..\lib\mas_capnproto_schemas\gen\csharp\Mas.Schema.csproj" />
-	</ItemGroup>
+    <ItemGroup>
+        <ProjectReference
+                Include="..\..\lib\capnproto-dotnetcore\Capnp.Net.Runtime\Capnp.Net.Runtime.csproj"/>
+        <ProjectReference
+                Include="..\..\lib\mas_capnproto_schemas\gen\csharp\Mas.Schema.csproj"/>
+    </ItemGroup>
 </Project>
