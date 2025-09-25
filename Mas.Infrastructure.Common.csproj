@@ -12,9 +12,7 @@
     </ItemGroup>
 
     <ItemGroup>
-        <ProjectReference
-                Include="..\..\lib\capnproto-dotnetcore\Capnp.Net.Runtime\Capnp.Net.Runtime.csproj"/>
-        <ProjectReference
-                Include="..\..\lib\mas_capnproto_schemas\gen\csharp\Mas.Schema.csproj"/>
+        <ProjectReference Include="../capnproto-dotnetcore/Capnp.Net.Runtime/Capnp.Net.Runtime.csproj"/>
+        <ProjectReference Include="../mas_capnproto_schemas/gen/csharp/Mas.Schema.csproj"/>
     </ItemGroup>
 </Project>
