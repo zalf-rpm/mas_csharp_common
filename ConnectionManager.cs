@@ -16,6 +16,8 @@ namespace Mas.Infrastructure.Common
         private readonly ConcurrentDictionary<string, TcpRpcClient> _connections = new();
         private TcpRpcServer _server;
 
+        public int DefaultSslPort { get; set; } = 443;
+
         public Restorer Restorer { get; set; }
 
         public bool NoConnectionCaching { get; set; } = true;
@@ -118,7 +120,7 @@ namespace Mas.Infrastructure.Common
 
                     if (attemptTls)
                     {
-                        con = await TryTlsConnectAsync(host, connectHost, port);
+                        con = await TryTlsConnectAsync(host, connectHost, port == 0 ? DefaultSslPort : port);
                     }
 
                     if (con == null)
