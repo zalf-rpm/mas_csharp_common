@@ -137,27 +137,34 @@ namespace Mas.Infrastructure.Common
             }   
         }
 
-
-
-        public Mas.Schema.Persistence.SturdyRef SturdyRef(string srToken) {
-            var vid = VatId;
-            if(!BitConverter.IsLittleEndian) Array.Reverse(vid, 0, vid.Length);
-
-            return new Schema.Persistence.SturdyRef {
-                Vat = new Schema.Persistence.VatPath {
-                    Id = new Schema.Persistence.VatId {
-                        PublicKey0 = BitConverter.ToUInt64(vid, 0),
-                        PublicKey1 = BitConverter.ToUInt64(vid, 8),
-                        PublicKey2 = BitConverter.ToUInt64(vid, 16),
-                        PublicKey3 = BitConverter.ToUInt64(vid, 24)
+        public static Mas.Schema.Persistence.SturdyRef SturdyRef(byte[] vatId, string host, ushort port, string srToken)
+        {
+            return new P.SturdyRef {
+                Vat = new P.VatPath {
+                    Id = new P.VatId {
+                        PublicKey0 = BitConverter.ToUInt64(vatId, 0),
+                        PublicKey1 = BitConverter.ToUInt64(vatId, 8),
+                        PublicKey2 = BitConverter.ToUInt64(vatId, 16),
+                        PublicKey3 = BitConverter.ToUInt64(vatId, 24)
                     },
-                    Address = new Schema.Persistence.Address {
-                        Host = TcpHost,
-                        Port = TcpPort
+                    Address = new P.Address {
+                        Host = host,
+                        Port = port
                     }
                 },
-                LocalRef = new Schema.Persistence.SturdyRef.Token { Text = srToken }
+                LocalRef = new P.SturdyRef.Token { Text = srToken }
             };
+        }
+
+        public static Mas.Schema.Persistence.SturdyRef SturdyRef(string base64VatId, string host, ushort port, string srToken)
+        {
+            var vid = Convert.FromBase64String(FromBase64Url(base64VatId));
+            if(!BitConverter.IsLittleEndian) Array.Reverse(vid, 0, vid.Length);
+            return SturdyRef(vid, host, port, srToken);
+        }
+
+        public Mas.Schema.Persistence.SturdyRef SturdyRef(string srToken) {
+            return SturdyRef(VatId, TcpHost, TcpPort, srToken);
         }
 
         public Task<bool> Unsave(string srToken) {

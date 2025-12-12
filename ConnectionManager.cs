@@ -7,7 +7,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Net.Security;
 using System.Security.Authentication;
-using System.IO; // added
+using System.IO;
+using Mas.Schema.Persistence; // added
 
 namespace Mas.Infrastructure.Common
 {
@@ -71,39 +72,17 @@ namespace Mas.Infrastructure.Common
             }
         }
 
-        public async Task<TRemoteInterface> Connect<TRemoteInterface>(string sturdyRef) where TRemoteInterface : class, IDisposable
+        public async Task<TRemoteInterface> Connect<TRemoteInterface>(Mas.Schema.Persistence.SturdyRef sturdyRef) where TRemoteInterface : class, IDisposable
         {
             // We assume that a sturdy ref url looks always like
             // capnp://vat-id_base64-curve25519-public-key@host:port/sturdy-ref-token
-            if (!sturdyRef.StartsWith("capnp://")) return null;
-            var vatIdBase64Url = "";
-            var addressPort = "";
-            var port = 0;
-            var srToken = "";
-            var host = ""; // Hostname to use for TLS/SNI
-
-            var rest = sturdyRef[8..];
-            // is Unix domain socket
-            if (rest.StartsWith("/")) rest = rest[1..];
-            else
-            {
-                var vatIdAndRest = rest.Split("@");
-                if (vatIdAndRest.Length > 0) vatIdBase64Url = vatIdAndRest[0];
-                if (vatIdAndRest[^1].Contains('/'))
-                {
-                    var addressPortAndRest = vatIdAndRest[^1].Split("/");
-                    if (addressPortAndRest.Length > 0)
-                    {
-                        var addressPortRaw = addressPortAndRest[0];
-
-                        // capture hostname for TLS BEFORE any replacement
-                        var rawHostPort = addressPortRaw.Split(":");
-                        if (rawHostPort.Length > 0) host = rawHostPort[0];
-                        if (rawHostPort.Length > 1) port = Int32.Parse(rawHostPort[1]);
-                    }
-                    if (addressPortAndRest.Length > 1) srToken = addressPortAndRest[1];
-                }
-            }
+            var vatId = sturdyRef.Vat.Id;
+            var port = sturdyRef?.Vat?.Address?.Port ?? 0;
+            var srToken = (sturdyRef?.LocalRef.which == SturdyRef.Token.WHICH.Text
+                ? sturdyRef.LocalRef.Text
+                : sturdyRef?.LocalRef.Data.ToString()) ?? "";
+            var host = sturdyRef?.Vat?.Address?.Host ?? ""; // Hostname to use for TLS/SNI
+            var addressPort = $"{host}:{port}";
 
             if (string.IsNullOrWhiteSpace(host)) return null;
 
@@ -182,6 +161,44 @@ namespace Mas.Infrastructure.Common
                     $"ConnectionManager: ThreadId: {Thread.CurrentThread.ManagedThreadId} retrying to connect for {retryCount} more times");
             }
             return null;
+        }
+
+
+        public async Task<TRemoteInterface> Connect<TRemoteInterface>(string sturdyRef) where TRemoteInterface : class, IDisposable
+        {
+            // We assume that a sturdy ref url looks always like
+            // capnp://vat-id_base64-curve25519-public-key@host:port/sturdy-ref-token
+            if (!sturdyRef.StartsWith("capnp://")) return null;
+            var vatIdBase64Url = "";
+            var addressPort = "";
+            ushort port = 0;
+            var srToken = "";
+            var host = ""; // Hostname to use for TLS/SNI
+
+            var rest = sturdyRef[8..];
+            // is Unix domain socket
+            if (rest.StartsWith("/")) rest = rest[1..];
+            else
+            {
+                var vatIdAndRest = rest.Split("@");
+                if (vatIdAndRest.Length > 0) vatIdBase64Url = vatIdAndRest[0];
+                if (vatIdAndRest[^1].Contains('/'))
+                {
+                    var addressPortAndRest = vatIdAndRest[^1].Split("/");
+                    if (addressPortAndRest.Length > 0)
+                    {
+                        var addressPortRaw = addressPortAndRest[0];
+
+                        // capture hostname for TLS BEFORE any replacement
+                        var rawHostPort = addressPortRaw.Split(":");
+                        if (rawHostPort.Length > 0) host = rawHostPort[0];
+                        if (rawHostPort.Length > 1) port = UInt16.Parse(rawHostPort[1]);
+                    }
+                    if (addressPortAndRest.Length > 1) srToken = addressPortAndRest[1];
+                }
+            }
+
+            return await Connect<TRemoteInterface>(Restorer.SturdyRef(vatIdBase64Url, host, port, srToken));
         }
 
         // Resolves the hostname to a single IP (prefers IPv4), falling back to the original host on failure.
