@@ -1,15 +1,11 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="BlazorGoogleMaps" Version="4.13.6" />
-    <PackageReference Include="Microsoft.AspNetCore.Components.Web" Version="8.0.19" />
-    <PackageReference Include="MudBlazor" Version="8.12.0" />
-    <PackageReference Include="System.Collections.Concurrent" Version="4.3.0" />
-    <PackageReference Include="NSec.Cryptography" Version="24.4.0" />
+    <PackageReference Include="NSec.Cryptography" Version="25.4.0" />
   </ItemGroup>
 
   <ItemGroup>
