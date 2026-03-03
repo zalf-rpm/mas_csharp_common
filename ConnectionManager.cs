@@ -1,13 +1,13 @@
-﻿using Capnp.Rpc;
-using System;
+﻿using System;
 using System.Collections.Concurrent;
+using System.IO;
 using System.Net;
+using System.Net.Security;
 using System.Net.Sockets;
+using System.Security.Authentication;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Net.Security;
-using System.Security.Authentication;
-using System.IO;
+using Capnp.Rpc;
 using Mas.Schema.Persistence; // added
 
 namespace Mas.Infrastructure.Common
@@ -27,7 +27,10 @@ namespace Mas.Infrastructure.Common
 
         public void Dispose() => Dispose(true);
 
-        public static string GetLocalIPAddress(string connectToHost = "dns.google", int connectToPort = 443)
+        public static string GetLocalIPAddress(
+            string connectToHost = "dns.google",
+            int connectToPort = 443
+        )
         {
             var localIP = "127.0.0.1";
             try
@@ -57,7 +60,12 @@ namespace Mas.Infrastructure.Common
                 }
                 catch (System.Exception e)
                 {
-                    Console.WriteLine("Exception thrown while disposing connection (TcpRpcClient): " + key + " Exception: " + e.Message);
+                    Console.WriteLine(
+                        "Exception thrown while disposing connection (TcpRpcClient): "
+                            + key
+                            + " Exception: "
+                            + e.Message
+                    );
                 }
             }
 
@@ -68,23 +76,32 @@ namespace Mas.Infrastructure.Common
             }
             catch (System.Exception e)
             {
-                Console.WriteLine("Exception thrown while disposing TcpRpcServer. Exception: " + e.Message);
+                Console.WriteLine(
+                    "Exception thrown while disposing TcpRpcServer. Exception: " + e.Message
+                );
             }
         }
 
-        public async Task<TRemoteInterface> Connect<TRemoteInterface>(Mas.Schema.Persistence.SturdyRef sturdyRef) where TRemoteInterface : class, IDisposable
+        public async Task<TRemoteInterface> Connect<TRemoteInterface>(
+            Mas.Schema.Persistence.SturdyRef sturdyRef
+        )
+            where TRemoteInterface : class, IDisposable
         {
             // We assume that a sturdy ref url looks always like
             // capnp://vat-id_base64-curve25519-public-key@host:port/sturdy-ref-token
             var vatId = sturdyRef.Vat.Id;
             var port = sturdyRef?.Vat?.Address?.Port ?? 0;
-            var srToken = (sturdyRef?.LocalRef.which == SturdyRef.Token.WHICH.Text
-                ? sturdyRef.LocalRef.Text
-                : sturdyRef?.LocalRef.Data.ToString()) ?? "";
+            var srToken =
+                (
+                    sturdyRef?.LocalRef.which == SturdyRef.Token.WHICH.Text
+                        ? sturdyRef.LocalRef.Text
+                        : sturdyRef?.LocalRef.Data.ToString()
+                ) ?? "";
             var host = sturdyRef?.Vat?.Address?.Host ?? ""; // Hostname to use for TLS/SNI
             var addressPort = $"{host}:{port}";
 
-            if (string.IsNullOrWhiteSpace(host)) return null;
+            if (string.IsNullOrWhiteSpace(host))
+                return null;
 
             // Resolve to a single IP to avoid multi-endpoint connect path on Linux
             var connectHost = await ResolveConnectHostAsync(host);
@@ -99,20 +116,31 @@ namespace Mas.Infrastructure.Common
 
                     if (attemptTls)
                     {
-                        con = await TryTlsConnectAsync(host, connectHost, port == 0 ? DefaultSslPort : port);
+                        con = await TryTlsConnectAsync(
+                            host,
+                            connectHost,
+                            port == 0 ? DefaultSslPort : port
+                        );
                     }
 
                     if (con == null)
                     {
                         // Fallback or direct: Plain TCP (preserve original caching behavior)
-                        con = NoConnectionCaching ? new TcpRpcClient() : _connections.GetOrAdd(addressPort, new TcpRpcClient());
+                        con = NoConnectionCaching
+                            ? new TcpRpcClient()
+                            : _connections.GetOrAdd(addressPort, new TcpRpcClient());
                         con.Connect(connectHost, port);
-                        if (con.WhenConnected == null) return null;
+                        if (con.WhenConnected == null)
+                            return null;
                         await con.WhenConnected;
                     }
 
-                    Console.WriteLine($"ConnectionManager: ThreadId: {Thread.CurrentThread.ManagedThreadId} connected");
-                    Console.WriteLine($"ConnectionManager: ThreadId: {Thread.CurrentThread.ManagedThreadId} trying to restore srToken: {srToken}");
+                    Console.WriteLine(
+                        $"ConnectionManager: ThreadId: {Thread.CurrentThread.ManagedThreadId} connected"
+                    );
+                    Console.WriteLine(
+                        $"ConnectionManager: ThreadId: {Thread.CurrentThread.ManagedThreadId} trying to restore srToken: {srToken}"
+                    );
                     if (!string.IsNullOrEmpty(srToken))
                     {
                         var restorer = con.GetMain<Schema.Persistence.IRestorer>();
@@ -120,68 +148,83 @@ namespace Mas.Infrastructure.Common
                         //var srToken = System.Text.Encoding.UTF8.GetString(srTokenArr);
                         using var cts = new CancellationTokenSource();
                         cts.CancelAfter((4 - retryCount) * 1000);
-                        var cap = await restorer.Restore(new Schema.Persistence.Restorer.RestoreParams
-                        {
-                            LocalRef = new Schema.Persistence.SturdyRef.Token { Text = srToken }
-                        }, cts.Token);
+                        var cap = await restorer.Restore(
+                            new Schema.Persistence.Restorer.RestoreParams
+                            {
+                                LocalRef = new Schema.Persistence.SturdyRef.Token
+                                {
+                                    Text = srToken,
+                                },
+                            },
+                            cts.Token
+                        );
                         Console.WriteLine(
-                            $"ConnectionManager: ThreadId: {Thread.CurrentThread.ManagedThreadId} received restorer cap");
+                            $"ConnectionManager: ThreadId: {Thread.CurrentThread.ManagedThreadId} received restorer cap"
+                        );
                         var cast_cap = cap.Cast<TRemoteInterface>(true);
                         Console.WriteLine(
-                            $"ConnectionManager: ThreadId: {Thread.CurrentThread.ManagedThreadId} casted cap to requested interface");
+                            $"ConnectionManager: ThreadId: {Thread.CurrentThread.ManagedThreadId} casted cap to requested interface"
+                        );
                         return cast_cap;
                     }
 
                     var bootstrap = con.GetMain<TRemoteInterface>();
                     Console.WriteLine(
-                        $"ConnectionManager: ThreadId: {Thread.CurrentThread.ManagedThreadId} returning bootstrap cap");
+                        $"ConnectionManager: ThreadId: {Thread.CurrentThread.ManagedThreadId} returning bootstrap cap"
+                    );
                     return bootstrap;
                 }
                 catch (ArgumentOutOfRangeException aoore)
                 {
                     Console.WriteLine(
-                        $"ConnectionManager: ThreadId: {Thread.CurrentThread.ManagedThreadId} ArgumentOutOfRangeException: {aoore.Message}");
+                        $"ConnectionManager: ThreadId: {Thread.CurrentThread.ManagedThreadId} ArgumentOutOfRangeException: {aoore.Message}"
+                    );
                     _connections.TryRemove(addressPort, out _);
                 }
                 catch (Capnp.Rpc.RpcException rpce)
                 {
                     Console.WriteLine(
-                        $"ConnectionManager: ThreadId: {Thread.CurrentThread.ManagedThreadId} RpcException: {rpce.Message}");
+                        $"ConnectionManager: ThreadId: {Thread.CurrentThread.ManagedThreadId} RpcException: {rpce.Message}"
+                    );
                     _connections.TryRemove(addressPort, out _);
                 }
                 catch (System.Exception e)
                 {
                     Console.WriteLine(
-                        $"ConnectionManager: ThreadId: {Thread.CurrentThread.ManagedThreadId} System.Exception: {e.Message}");
+                        $"ConnectionManager: ThreadId: {Thread.CurrentThread.ManagedThreadId} System.Exception: {e.Message}"
+                    );
                     _connections.TryRemove(addressPort, out _);
                     throw;
                 }
                 retryCount--;
                 Console.WriteLine(
-                    $"ConnectionManager: ThreadId: {Thread.CurrentThread.ManagedThreadId} retrying to connect for {retryCount} more times");
+                    $"ConnectionManager: ThreadId: {Thread.CurrentThread.ManagedThreadId} retrying to connect for {retryCount} more times"
+                );
             }
             return null;
         }
 
-
-        public async Task<TRemoteInterface> Connect<TRemoteInterface>(string sturdyRef) where TRemoteInterface : class, IDisposable
+        public async Task<TRemoteInterface> Connect<TRemoteInterface>(string sturdyRef)
+            where TRemoteInterface : class, IDisposable
         {
             // We assume that a sturdy ref url looks always like
             // capnp://vat-id_base64-curve25519-public-key@host:port/sturdy-ref-token
-            if (!sturdyRef.StartsWith("capnp://")) return null;
+            if (!sturdyRef.StartsWith("capnp://"))
+                return null;
             var vatIdBase64Url = "";
-            var addressPort = "";
             ushort port = 0;
             var srToken = "";
             var host = ""; // Hostname to use for TLS/SNI
 
             var rest = sturdyRef[8..];
             // is Unix domain socket
-            if (rest.StartsWith("/")) rest = rest[1..];
+            if (rest.StartsWith("/"))
+                rest = rest[1..];
             else
             {
                 var vatIdAndRest = rest.Split("@");
-                if (vatIdAndRest.Length > 0) vatIdBase64Url = vatIdAndRest[0];
+                if (vatIdAndRest.Length > 1)
+                    vatIdBase64Url = vatIdAndRest[0];
                 if (vatIdAndRest[^1].Contains('/'))
                 {
                     var addressPortAndRest = vatIdAndRest[^1].Split("/");
@@ -191,20 +234,26 @@ namespace Mas.Infrastructure.Common
 
                         // capture hostname for TLS BEFORE any replacement
                         var rawHostPort = addressPortRaw.Split(":");
-                        if (rawHostPort.Length > 0) host = rawHostPort[0];
-                        if (rawHostPort.Length > 1) port = UInt16.Parse(rawHostPort[1]);
+                        if (rawHostPort.Length > 0)
+                            host = rawHostPort[0];
+                        if (rawHostPort.Length > 1)
+                            port = UInt16.Parse(rawHostPort[1]);
                     }
-                    if (addressPortAndRest.Length > 1) srToken = addressPortAndRest[1];
+                    if (addressPortAndRest.Length > 1)
+                        srToken = addressPortAndRest[1];
                 }
             }
 
-            return await Connect<TRemoteInterface>(Restorer.SturdyRef(vatIdBase64Url, host, port, srToken));
+            return await Connect<TRemoteInterface>(
+                Restorer.SturdyRef(vatIdBase64Url, host, port, srToken)
+            );
         }
 
         // Resolves the hostname to a single IP (prefers IPv4), falling back to the original host on failure.
         private async Task<string> ResolveConnectHostAsync(string host)
         {
-            if (string.IsNullOrWhiteSpace(host)) return host;
+            if (string.IsNullOrWhiteSpace(host))
+                return host;
 
             string connectHost = host;
             if (!IPAddress.TryParse(connectHost, out _))
@@ -212,12 +261,17 @@ namespace Mas.Infrastructure.Common
                 try
                 {
                     var ips = await Dns.GetHostAddressesAsync(connectHost);
-                    var ipv4 = Array.Find(ips, ip => ip.AddressFamily == AddressFamily.InterNetwork);
+                    var ipv4 = Array.Find(
+                        ips,
+                        ip => ip.AddressFamily == AddressFamily.InterNetwork
+                    );
                     connectHost = (ipv4 ?? ips[0]).ToString();
                 }
                 catch (System.Exception ex)
                 {
-                    Console.WriteLine($"ConnectionManager: DNS resolve failed for '{connectHost}': {ex.Message}. Using hostname directly.");
+                    Console.WriteLine(
+                        $"ConnectionManager: DNS resolve failed for '{connectHost}': {ex.Message}. Using hostname directly."
+                    );
                     connectHost = host;
                 }
             }
@@ -225,7 +279,11 @@ namespace Mas.Infrastructure.Common
         }
 
         // Attempt a TLS connection; returns a connected client on success, null to fallback, rethrows on unknown errors.
-        private async Task<TcpRpcClient> TryTlsConnectAsync(string sniHost, string connectHost, int port)
+        private async Task<TcpRpcClient> TryTlsConnectAsync(
+            string sniHost,
+            string connectHost,
+            int port
+        )
         {
             var tlsCon = new TcpRpcClient();
             try
@@ -236,7 +294,9 @@ namespace Mas.Infrastructure.Common
                     ssl.AuthenticateAsClient(sniHost);
                     return ssl;
                 });
-                Console.WriteLine($"TLS attempt (SNI host: {sniHost}, connect: {connectHost}:{port})");
+                Console.WriteLine(
+                    $"TLS attempt (SNI host: {sniHost}, connect: {connectHost}:{port})"
+                );
                 tlsCon.Connect(connectHost, port);
                 if (tlsCon.WhenConnected == null)
                 {
@@ -248,7 +308,9 @@ namespace Mas.Infrastructure.Common
             }
             catch (AuthenticationException aex)
             {
-                Console.WriteLine($"TLS not supported or failed auth: {aex.Message}. Falling back to plain TCP.");
+                Console.WriteLine(
+                    $"TLS not supported or failed auth: {aex.Message}. Falling back to plain TCP."
+                );
                 tlsCon.Dispose();
                 return null;
             }
