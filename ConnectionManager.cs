@@ -136,10 +136,10 @@ namespace Mas.Infrastructure.Common
                     }
 
                     Console.WriteLine(
-                        $"ConnectionManager: ThreadId: {Thread.CurrentThread.ManagedThreadId} connected"
+                        $"ConnectionManager: ThreadId: {Environment.CurrentManagedThreadId} connected"
                     );
                     Console.WriteLine(
-                        $"ConnectionManager: ThreadId: {Thread.CurrentThread.ManagedThreadId} trying to restore srToken: {srToken}"
+                        $"ConnectionManager: ThreadId: {Environment.CurrentManagedThreadId} trying to restore srToken: {srToken}"
                     );
                     if (!string.IsNullOrEmpty(srToken))
                     {
@@ -159,46 +159,46 @@ namespace Mas.Infrastructure.Common
                             cts.Token
                         );
                         Console.WriteLine(
-                            $"ConnectionManager: ThreadId: {Thread.CurrentThread.ManagedThreadId} received restorer cap"
+                            $"ConnectionManager: ThreadId: {Environment.CurrentManagedThreadId} received restorer cap"
                         );
                         var cast_cap = cap.Cast<TRemoteInterface>(true);
                         Console.WriteLine(
-                            $"ConnectionManager: ThreadId: {Thread.CurrentThread.ManagedThreadId} casted cap to requested interface"
+                            $"ConnectionManager: ThreadId: {Environment.CurrentManagedThreadId} casted cap to requested interface"
                         );
                         return cast_cap;
                     }
 
                     var bootstrap = con.GetMain<TRemoteInterface>();
                     Console.WriteLine(
-                        $"ConnectionManager: ThreadId: {Thread.CurrentThread.ManagedThreadId} returning bootstrap cap"
+                        $"ConnectionManager: ThreadId: {Environment.CurrentManagedThreadId} returning bootstrap cap"
                     );
                     return bootstrap;
                 }
                 catch (ArgumentOutOfRangeException aoore)
                 {
                     Console.WriteLine(
-                        $"ConnectionManager: ThreadId: {Thread.CurrentThread.ManagedThreadId} ArgumentOutOfRangeException: {aoore.Message}"
+                        $"ConnectionManager: ThreadId: {Environment.CurrentManagedThreadId} ArgumentOutOfRangeException: {aoore.Message}"
                     );
                     _connections.TryRemove(addressPort, out _);
                 }
                 catch (Capnp.Rpc.RpcException rpce)
                 {
                     Console.WriteLine(
-                        $"ConnectionManager: ThreadId: {Thread.CurrentThread.ManagedThreadId} RpcException: {rpce.Message}"
+                        $"ConnectionManager: ThreadId: {Environment.CurrentManagedThreadId} RpcException: {rpce.Message}"
                     );
                     _connections.TryRemove(addressPort, out _);
                 }
                 catch (System.Exception e)
                 {
                     Console.WriteLine(
-                        $"ConnectionManager: ThreadId: {Thread.CurrentThread.ManagedThreadId} System.Exception: {e.Message}"
+                        $"ConnectionManager: ThreadId: {Environment.CurrentManagedThreadId} System.Exception: {e.Message}"
                     );
                     _connections.TryRemove(addressPort, out _);
                     throw;
                 }
                 retryCount--;
                 Console.WriteLine(
-                    $"ConnectionManager: ThreadId: {Thread.CurrentThread.ManagedThreadId} retrying to connect for {retryCount} more times"
+                    $"ConnectionManager: ThreadId: {Environment.CurrentManagedThreadId} retrying to connect for {retryCount} more times"
                 );
             }
             return null;
