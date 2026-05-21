@@ -1,16 +1,14 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
-
   <PropertyGroup>
     <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="NSec.Cryptography" Version="25.4.0" />
+    <PackageReference Include="NSec.Cryptography" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\capnproto-dotnetcore\Capnp.Net.Runtime\Capnp.Net.Runtime.csproj" />
     <ProjectReference Include="..\mas_capnproto_schemas\gen\csharp\zalfmas_capnpschemas.csproj" />
   </ItemGroup>
-
 </Project>
