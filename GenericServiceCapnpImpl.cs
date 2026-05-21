@@ -1,4 +1,3 @@
-using Capnp.Rpc;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -8,6 +7,7 @@ using System.Net.Sockets;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using Capnp.Rpc;
 
 namespace Mas.Infrastructure.Service
 {
@@ -24,32 +24,43 @@ namespace Mas.Infrastructure.Service
         public string Name { get; set; }
         public string Description { get; set; }
 
-        public Admin(Mas.Schema.Registry.IRegistry registry, System.Action<Mas.Schema.Common.IdInformation> updateIdentity)
+        public Admin(
+            Mas.Schema.Registry.IRegistry registry,
+            System.Action<Mas.Schema.Common.IdInformation> updateIdentity
+        )
         {
             _registry = registry;
             _timer.AutoReset = false;
             _updateIdentity = updateIdentity;
         }
-        
-        public void Dispose()
-        {
-        }
+
+        public void Dispose() { }
 
         //private void store_unreg_data(name, unreg_action, rereg_sr)
         //{
         //    self._unreg_sturdy_refs[name] = (unreg_action, rereg_sr)
         //}
 
-
         #region implementation of Mas.Rpc.Common.IIdentifiable
-        public Task<Mas.Schema.Common.IdInformation> Info(CancellationToken cancellationToken_ = default)
+
+        public Task<Mas.Schema.Common.IdInformation> Info(
+            CancellationToken cancellationToken_ = default
+        )
         {
-            return Task.FromResult(new Schema.Common.IdInformation()
-            { Id = Id, Name = Name, Description = Description });
+            return Task.FromResult(
+                new Schema.Common.IdInformation()
+                {
+                    Id = Id,
+                    Name = Name,
+                    Description = Description,
+                }
+            );
         }
+
         #endregion
 
         #region implementation of Persistence.IPersistent
+
         // heartbeat @0 ();
         public Task Heartbeat(CancellationToken cancellationToken_ = default)
         {
@@ -61,10 +72,10 @@ namespace Mas.Infrastructure.Service
         // setTimeout @1 (seconds :UInt64);
         public Task SetTimeout(ulong seconds, CancellationToken cancellationToken_ = default)
         {
-            _timer.Interval = Math.Max(0, seconds*1000);
-            if(_timer.Interval > 0)
+            _timer.Interval = Math.Max(0, seconds * 1000);
+            if (_timer.Interval > 0)
                 _timer.Start();
-            else 
+            else
                 _timer.Stop();
             return Task.CompletedTask;
         }
@@ -79,21 +90,35 @@ namespace Mas.Infrastructure.Service
         }
 
         // identity @3 () -> Common.IdInformation;
-        public Task<IReadOnlyList<Mas.Schema.Common.IdInformation>> Identities(CancellationToken cancellationToken_ = default)
+        public Task<IReadOnlyList<Mas.Schema.Common.IdInformation>> Identities(
+            CancellationToken cancellationToken_ = default
+        )
         {
             var info = _registry.Info().Result;
-            IReadOnlyList<Mas.Schema.Common.IdInformation> l = new List<Mas.Schema.Common.IdInformation>{ 
-                new Mas.Schema.Common.IdInformation { Id = info.Id, Name = info.Name, Description = info.Description }
-            };
+            IReadOnlyList<Mas.Schema.Common.IdInformation> l =
+                new List<Mas.Schema.Common.IdInformation>
+                {
+                    new Mas.Schema.Common.IdInformation
+                    {
+                        Id = info.Id,
+                        Name = info.Name,
+                        Description = info.Description,
+                    },
+                };
             return Task.FromResult(l);
         }
 
         // updateIdentity @4 Common.IdInformation;
-        public Task UpdateIdentity(string oldId, Mas.Schema.Common.IdInformation info, CancellationToken cancellationToken_ = default)
+        public Task UpdateIdentity(
+            string oldId,
+            Mas.Schema.Common.IdInformation info,
+            CancellationToken cancellationToken_ = default
+        )
         {
             _updateIdentity(info);
             return Task.CompletedTask;
         }
+
         #endregion
     }
 }

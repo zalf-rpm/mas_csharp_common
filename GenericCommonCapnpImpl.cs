@@ -1,10 +1,10 @@
-﻿using Capnp.Rpc;
-using System;
+﻿using System;
 using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
+using Capnp.Rpc;
 using Crypt = NSec.Cryptography;
 using P = Mas.Schema.Persistence;
 
@@ -21,14 +21,14 @@ namespace Mas.Infrastructure.Common
     //         _callActionOnDispose = callActionOnDispose;
     //         _restorer = restorer;
     //     }
-    //     
+    //
     //     public void Dispose() {
     //         if (_callActionOnDispose && !_alreadyCalled)
     //             _removeService();
     //     }
     //
     //     #region implementation of Persistence.IPersistent
-    //     public Task<Mas.Schema.Persistence.Persistent.SaveResults> Save(Mas.Schema.Persistence.Persistent.SaveParams ps, 
+    //     public Task<Mas.Schema.Persistence.Persistent.SaveResults> Save(Mas.Schema.Persistence.Persistent.SaveParams ps,
     //         CancellationToken cancellationToken_ = default) {
     //         if(_restorer == null) {
     //             return Task.FromResult<Mas.Schema.Persistence.Persistent.SaveResults>(null);//Task.FromResult<(string, string)>((null, null));
@@ -49,7 +49,7 @@ namespace Mas.Infrastructure.Common
     //     #endregion
     // }
 
-//-----------------------------------------------------------------------------
+    //-----------------------------------------------------------------------------
 
     // public class Action1 : Mas.Schema.Common.IAction1
     // {
@@ -61,7 +61,7 @@ namespace Mas.Infrastructure.Common
     //         _removeService = removeService;
     //         _restorer = restorer;
     //     }
-    //     
+    //
     //     public void Dispose() {}
     //
     //     #region implementation of Persistence.IPersistent
@@ -83,7 +83,7 @@ namespace Mas.Infrastructure.Common
     //     //         var res = _restorer.Save(BareProxy.FromImpl(this));
     //     //         return Task.FromResult<(string, string)>((res.SturdyRef, res.UnsaveSR));
     //     //     }
-    //         
+    //
     //     // }
     //     #endregion
     //
@@ -96,7 +96,6 @@ namespace Mas.Infrastructure.Common
     //     }
     //     #endregion
     // }
-
 }
 
 //-----------------------------------------------------------------------------

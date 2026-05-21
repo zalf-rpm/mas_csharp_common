@@ -130,6 +130,7 @@ namespace Mas.Infrastructure.Common
                 BitConverter.GetBytes(id.PublicKey3).CopyTo(vatIdBytes, 24);
                 vatIdBase64Url = ToBase64Url(Convert.ToBase64String(vatIdBytes));
             }
+
             //var srTokenBase64Url = ToBase64Url(Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes((string)sturdyRef.TheTransient.LocalRef)));
             return $"capnp://{(string.IsNullOrEmpty(vatIdBase64Url) ? "" : vatIdBase64Url + "@")}{sturdyRef.Vat.Address.Host}:{sturdyRef.Vat.Address.Port}/{sturdyRef.LocalRef.Text}";
         }
@@ -221,6 +222,7 @@ namespace Mas.Infrastructure.Common
                 if (!BitConverter.IsLittleEndian)
                     Array.Reverse(vid, 0, vid.Length);
             }
+
             return SturdyRef(vid, host, port, srToken);
         }
 
@@ -248,6 +250,7 @@ namespace Mas.Infrastructure.Common
         }
 
         #region implementation of Mas.Schema.Persistence.Restorer
+
         public async Task<BareProxy> Restore(
             Mas.Schema.Persistence.Restorer.RestoreParams ps,
             CancellationToken cancellationToken_ = default
@@ -288,6 +291,7 @@ namespace Mas.Infrastructure.Common
                 return bareProxy2; // Proxy.Share(_srToken2Proxy[srToken]));
             }
         }
+
         #endregion
 
         public void Dispose()

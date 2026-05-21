@@ -44,6 +44,7 @@ namespace Mas.Infrastructure.Common
             {
                 Console.WriteLine(e.Message);
             }
+
             return localIP;
         }
 
@@ -196,11 +197,13 @@ namespace Mas.Infrastructure.Common
                     _connections.TryRemove(addressPort, out _);
                     throw;
                 }
+
                 retryCount--;
                 Console.WriteLine(
                     $"ConnectionManager: ThreadId: {Environment.CurrentManagedThreadId} retrying to connect for {retryCount} more times"
                 );
             }
+
             return null;
         }
 
@@ -239,6 +242,7 @@ namespace Mas.Infrastructure.Common
                         if (rawHostPort.Length > 1)
                             port = UInt16.Parse(rawHostPort[1]);
                     }
+
                     if (addressPortAndRest.Length > 1)
                         srToken = addressPortAndRest[1];
                 }
@@ -275,6 +279,7 @@ namespace Mas.Infrastructure.Common
                     connectHost = host;
                 }
             }
+
             return connectHost;
         }
 
@@ -303,6 +308,7 @@ namespace Mas.Infrastructure.Common
                     tlsCon.Dispose();
                     return null;
                 }
+
                 await tlsCon.WhenConnected;
                 return tlsCon;
             }
