@@ -1,307 +1,286 @@
 ﻿using System;
 using System.Collections.Concurrent;
-using System.Net;
-using System.Net.Sockets;
-using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
 using Capnp.Rpc;
-using Mas.Schema.Climate;
+using Mas.Schema.Storage;
 using Crypt = NSec.Cryptography;
 using P = Mas.Schema.Persistence;
 
-namespace Mas.Infrastructure.Common
+namespace Mas.Infrastructure.Common;
+
+public class Restorer : P.IRestorer
 {
-    public class Restorer : P.IRestorer
+    private readonly ConcurrentDictionary<
+        string,
+        ((ulong, ulong, ulong, ulong), string)
+    > _extSRT2VatIdAndIntSRT = new(); // mapping of external sturdy ref token to internal one
+
+    private readonly ConcurrentDictionary<string, Proxy> _srToken2Capability = new();
+
+    private readonly ConcurrentDictionary<
+        (ulong, ulong, ulong, ulong),
+        P.IRestorer
+    > _vatId2Restorer = new();
+
+    private readonly Crypt.Key _vatKey;
+
+    public Restorer()
     {
-        private ConcurrentDictionary<string, Proxy> _srToken2Capability = new();
+        //TcpHost = Dns.GetHostName(); //"localhost";// GetLocalIPAddress();
 
-        public string TcpHost { get; set; } = "127.0.0.1";
-        public ushort TcpPort { get; set; } = 0;
-        public byte[] VatId { get; set; }
+        var algorithm = Crypt.SignatureAlgorithm.Ed25519;
+        _vatKey = Crypt.Key.Create(algorithm);
+        VatId = _vatKey.PublicKey.Export(Crypt.KeyBlobFormat.RawPublicKey);
+    }
 
-        public Mas.Schema.Storage.Store.IContainer StorageContainer { get; set; } = null;
+    public string TcpHost { get; set; } = "127.0.0.1";
+    public ushort TcpPort { get; set; } = 0;
+    public byte[] VatId { get; set; }
 
-        private ConcurrentDictionary<
-            string,
-            ((ulong, ulong, ulong, ulong), string)
-        > _extSRT2VatIdAndIntSRT = new(); // mapping of external sturdy ref token to internal one
+    public Store.IContainer StorageContainer { get; set; } = null;
 
-        private ConcurrentDictionary<
-            (ulong, ulong, ulong, ulong),
-            Mas.Schema.Persistence.IRestorer
-        > _vatId2Restorer = new();
+    #region implementation of Mas.Schema.Persistence.Restorer
 
-        private Crypt.Key _vatKey;
+    public async Task<BareProxy> Restore(
+        P.Restorer.RestoreParams ps,
+        CancellationToken cancellationToken_ = default
+    )
+    {
+        //var ds = (Capnp.DeserializerState)ps.LocalRef.Text;
+        var srToken = ps.LocalRef.Text; //Capnp.CapnpSerializable.Create<string>(ds);
+        //var sealedFor = ps.SealedFor;
 
-        public Restorer()
+        // is cross domain restore? then always query the remote restorer
+        if (_extSRT2VatIdAndIntSRT.TryGetValue(srToken, out var value))
         {
-            //TcpHost = Dns.GetHostName(); //"localhost";// GetLocalIPAddress();
-
-            var algorithm = Crypt.SignatureAlgorithm.Ed25519;
-            _vatKey = Crypt.Key.Create(algorithm);
-            VatId = _vatKey.PublicKey.Export(Crypt.KeyBlobFormat.RawPublicKey);
-        }
-
-        public static string ToBase64Url(string base64)
-        {
-            return base64.Replace('+', '-').Replace('/', '_').Replace("=", "");
-        }
-
-        public static string FromBase64Url(string base64Url)
-        {
-            return base64Url
-                .Replace('-', '+')
-                .Replace('_', '/')
-                .PadRight(base64Url.Length + (4 - base64Url.Length % 4) % 4, '=');
-        }
-
-        public struct SaveRes
-        {
-            public Mas.Schema.Persistence.SturdyRef SturdyRef { get; set; }
-            public Mas.Schema.Persistence.SturdyRef UnsaveSR { get; set; }
-
-            //public string SturdyRefStr { get; set; }
-            //public string SRToken { get; set; }
-            //public string UnsaveSR { get; set; }
-            //public string UnsaveSRToken { get; set; }
-            public ReleaseSturdyRef UnsaveAction { get; set; }
-        }
-
-        public class ReleaseSturdyRef : P.Persistent.IReleaseSturdyRef
-        {
-            private readonly Func<Task<bool>> _releaseFunc;
-
-            public ReleaseSturdyRef(Func<Task<bool>> func)
-            {
-                _releaseFunc = func;
-            }
-
-            public Task<bool> Release(CancellationToken cancellationToken_ = default)
-            {
-                return _releaseFunc();
-            }
-
-            public void Dispose() { }
-        }
-
-        public (string, string) SaveStr(
-            Capnp.Rpc.Proxy proxy,
-            string fixedSrToken = null,
-            string sealForOwner = null,
-            bool includeUnsave = true
-        )
-        {
-            var srToken = fixedSrToken ?? System.Guid.NewGuid().ToString();
-            _srToken2Capability[srToken] = proxy;
-            if (includeUnsave)
-            {
-                var unsaveSRToken = System.Guid.NewGuid().ToString();
-                var unsaveAction = new ReleaseSturdyRef(async () =>
-                    await Unsave(srToken) && await Unsave(unsaveSRToken)
+            var (vatId, intSRT) = value;
+            if (_vatId2Restorer.TryGetValue(vatId, out var restorer))
+                return await restorer.Restore(
+                    new P.Restorer.RestoreParams
+                    {
+                        LocalRef = new P.SturdyRef.Token { Text = intSRT },
+                    },
+                    cancellationToken_
                 );
-                _srToken2Capability[unsaveSRToken] = BareProxy.FromImpl(unsaveAction);
-                return (SturdyRefStr(srToken), SturdyRefStr(unsaveSRToken));
-            }
-            else
-            {
-                return (SturdyRefStr(srToken), null);
-            }
         }
 
-        public string SturdyRefStr(string srToken)
-        {
-            var vatIdBase64Url = ToBase64Url(Convert.ToBase64String(VatId));
-            //var srTokenBase64Url = ToBase64Url(Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(srToken)));
-            //return $"capnp://{vatIdBase64Url}@{TcpHost}:{TcpPort}/{srTokenBase64Url}";
-            return $"capnp://{vatIdBase64Url}@{TcpHost}:{TcpPort}/{srToken}";
-        }
+        // no remote restorer for cross domain available or just a normal restore
+        if (!_srToken2Capability.ContainsKey(srToken))
+            return null;
+        var cap = _srToken2Capability[srToken];
+        if (cap is BareProxy bareProxy)
+            return Proxy.Share(bareProxy);
 
-        public static string SturdyRefStr(P.SturdyRef sturdyRef)
-        {
-            var vatIdBase64Url = "";
-            var id = sturdyRef.Vat.Id;
-            if (id != null)
-            {
-                var vatIdBytes = new byte[4 * 8];
-                BitConverter.GetBytes(id.PublicKey0).CopyTo(vatIdBytes, 0);
-                BitConverter.GetBytes(id.PublicKey1).CopyTo(vatIdBytes, 8);
-                BitConverter.GetBytes(id.PublicKey2).CopyTo(vatIdBytes, 16);
-                BitConverter.GetBytes(id.PublicKey3).CopyTo(vatIdBytes, 24);
-                vatIdBase64Url = ToBase64Url(Convert.ToBase64String(vatIdBytes));
-            }
+        var sharedProxy = Proxy.Share(cap);
+        var bareProxy2 = new BareProxy(sharedProxy.ConsumedCap);
+        return bareProxy2; // Proxy.Share(_srToken2Proxy[srToken]));
+    }
 
-            //var srTokenBase64Url = ToBase64Url(Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes((string)sturdyRef.TheTransient.LocalRef)));
-            return $"capnp://{(string.IsNullOrEmpty(vatIdBase64Url) ? "" : vatIdBase64Url + "@")}{sturdyRef.Vat.Address.Host}:{sturdyRef.Vat.Address.Port}/{sturdyRef.LocalRef.Text}";
-        }
+    #endregion
 
-        public void InstallCrossDomainMapping(string extSRT, P.VatId vatId, string intSRT)
+    public void Dispose()
+    {
+        GC.SuppressFinalize(this);
+        // dispose sturdy ref caps
+        //foreach (var sr2p in _srToken2Capability)
+        //    sr2p.Value?.Dispose();
+
+        Console.WriteLine("Restorer: Dispose");
+    }
+
+    public static string ToBase64Url(string base64)
+    {
+        return base64.Replace('+', '-').Replace('/', '_').Replace("=", "");
+    }
+
+    public static string FromBase64Url(string base64Url)
+    {
+        return base64Url
+            .Replace('-', '+')
+            .Replace('_', '/')
+            .PadRight(base64Url.Length + (4 - base64Url.Length % 4) % 4, '=');
+    }
+
+    public (string, string) SaveStr(
+        Proxy proxy,
+        string fixedSrToken = null,
+        string sealForOwner = null,
+        bool includeUnsave = true
+    )
+    {
+        var srToken = fixedSrToken ?? Guid.NewGuid().ToString();
+        _srToken2Capability[srToken] = proxy;
+        if (includeUnsave)
         {
-            _extSRT2VatIdAndIntSRT[extSRT] = (
-                (vatId.PublicKey0, vatId.PublicKey1, vatId.PublicKey2, vatId.PublicKey3),
-                intSRT
+            var unsaveSRToken = Guid.NewGuid().ToString();
+            var unsaveAction = new ReleaseSturdyRef(async () =>
+                await Unsave(srToken) && await Unsave(unsaveSRToken)
             );
+            _srToken2Capability[unsaveSRToken] = BareProxy.FromImpl(unsaveAction);
+            return (SturdyRefStr(srToken), SturdyRefStr(unsaveSRToken));
         }
 
-        public SaveRes Save(
-            Capnp.Rpc.Proxy proxy,
-            string fixedSRToken = null,
-            string sealForOwner = null,
-            bool includeUnsave = true
-        )
-        {
-            var srToken = fixedSRToken ?? System.Guid.NewGuid().ToString();
-            _srToken2Capability[srToken] = proxy;
+        return (SturdyRefStr(srToken), null);
+    }
 
-            if (includeUnsave)
-            {
-                var unsaveSRToken = System.Guid.NewGuid().ToString();
-                var unsaveAction = new ReleaseSturdyRef(async () =>
-                    await Unsave(srToken) && await Unsave(unsaveSRToken)
-                );
-                _srToken2Capability[unsaveSRToken] = BareProxy.FromImpl(unsaveAction);
-                return new SaveRes
-                {
-                    SturdyRef = SturdyRef(srToken),
-                    //SRToken = srToken,
-                    UnsaveSR = SturdyRef(unsaveSRToken),
-                    //UnsaveSRToken = unsaveSRToken,
-                    UnsaveAction = unsaveAction,
-                };
-            }
-            else
-            {
-                return new SaveRes
-                {
-                    SturdyRef = SturdyRef(srToken),
-                    //SRToken = srToken
-                };
-            }
+    public string SturdyRefStr(string srToken)
+    {
+        var vatIdBase64Url = ToBase64Url(Convert.ToBase64String(VatId));
+        //var srTokenBase64Url = ToBase64Url(Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(srToken)));
+        //return $"capnp://{vatIdBase64Url}@{TcpHost}:{TcpPort}/{srTokenBase64Url}";
+        return $"capnp://{vatIdBase64Url}@{TcpHost}:{TcpPort}/{srToken}";
+    }
+
+    public static string SturdyRefStr(P.SturdyRef sturdyRef)
+    {
+        var vatIdBase64Url = "";
+        var id = sturdyRef.Vat.Id;
+        if (id != null)
+        {
+            var vatIdBytes = new byte[4 * 8];
+            BitConverter.GetBytes(id.PublicKey0).CopyTo(vatIdBytes, 0);
+            BitConverter.GetBytes(id.PublicKey1).CopyTo(vatIdBytes, 8);
+            BitConverter.GetBytes(id.PublicKey2).CopyTo(vatIdBytes, 16);
+            BitConverter.GetBytes(id.PublicKey3).CopyTo(vatIdBytes, 24);
+            vatIdBase64Url = ToBase64Url(Convert.ToBase64String(vatIdBytes));
         }
 
-        public static Mas.Schema.Persistence.SturdyRef SturdyRef(
-            byte[] vatId,
-            string host,
-            ushort port,
-            string srToken
-        )
+        //var srTokenBase64Url = ToBase64Url(Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes((string)sturdyRef.TheTransient.LocalRef)));
+        return $"capnp://{(string.IsNullOrEmpty(vatIdBase64Url) ? "" : vatIdBase64Url + "@")}{sturdyRef.Vat.Address.Host}:{sturdyRef.Vat.Address.Port}/{sturdyRef.LocalRef.Text}";
+    }
+
+    public void InstallCrossDomainMapping(string extSRT, P.VatId vatId, string intSRT)
+    {
+        _extSRT2VatIdAndIntSRT[extSRT] = (
+            (vatId.PublicKey0, vatId.PublicKey1, vatId.PublicKey2, vatId.PublicKey3),
+            intSRT
+        );
+    }
+
+    public SaveRes Save(
+        Proxy proxy,
+        string fixedSRToken = null,
+        string sealForOwner = null,
+        bool includeUnsave = true
+    )
+    {
+        var srToken = fixedSRToken ?? Guid.NewGuid().ToString();
+        _srToken2Capability[srToken] = proxy;
+
+        if (includeUnsave)
         {
-            var sr = new P.SturdyRef
+            var unsaveSRToken = Guid.NewGuid().ToString();
+            var unsaveAction = new ReleaseSturdyRef(async () =>
+                await Unsave(srToken) && await Unsave(unsaveSRToken)
+            );
+            _srToken2Capability[unsaveSRToken] = BareProxy.FromImpl(unsaveAction);
+            return new SaveRes
             {
-                Vat = new P.VatPath
-                {
-                    Address = new P.Address { Host = host, Port = port },
-                },
-                LocalRef = new P.SturdyRef.Token { Text = srToken },
+                SturdyRef = SturdyRef(srToken),
+                //SRToken = srToken,
+                UnsaveSR = SturdyRef(unsaveSRToken),
+                //UnsaveSRToken = unsaveSRToken,
+                UnsaveAction = unsaveAction,
             };
-            if (vatId.Length == 32)
+        }
+
+        return new SaveRes
+        {
+            SturdyRef = SturdyRef(srToken),
+            //SRToken = srToken
+        };
+    }
+
+    public static P.SturdyRef SturdyRef(byte[] vatId, string host, ushort port, string srToken)
+    {
+        var sr = new P.SturdyRef
+        {
+            Vat = new P.VatPath
             {
-                sr.Vat.Id = new P.VatId
-                {
-                    PublicKey0 = BitConverter.ToUInt64(vatId, 0),
-                    PublicKey1 = BitConverter.ToUInt64(vatId, 8),
-                    PublicKey2 = BitConverter.ToUInt64(vatId, 16),
-                    PublicKey3 = BitConverter.ToUInt64(vatId, 24),
-                };
-            }
-
-            return sr;
-        }
-
-        public static Mas.Schema.Persistence.SturdyRef SturdyRef(
-            string base64VatId,
-            string host,
-            ushort port,
-            string srToken
-        )
-        {
-            var vid = Array.Empty<byte>();
-            if (!string.IsNullOrEmpty(base64VatId))
+                Address = new P.Address { Host = host, Port = port },
+            },
+            LocalRef = new P.SturdyRef.Token { Text = srToken },
+        };
+        if (vatId.Length == 32)
+            sr.Vat.Id = new P.VatId
             {
-                vid = Convert.FromBase64String(FromBase64Url(base64VatId));
-                if (!BitConverter.IsLittleEndian)
-                    Array.Reverse(vid, 0, vid.Length);
-            }
+                PublicKey0 = BitConverter.ToUInt64(vatId, 0),
+                PublicKey1 = BitConverter.ToUInt64(vatId, 8),
+                PublicKey2 = BitConverter.ToUInt64(vatId, 16),
+                PublicKey3 = BitConverter.ToUInt64(vatId, 24),
+            };
 
-            return SturdyRef(vid, host, port, srToken);
+        return sr;
+    }
+
+    public static P.SturdyRef SturdyRef(
+        string base64VatId,
+        string host,
+        ushort port,
+        string srToken
+    )
+    {
+        var vid = Array.Empty<byte>();
+        if (!string.IsNullOrEmpty(base64VatId))
+        {
+            vid = Convert.FromBase64String(FromBase64Url(base64VatId));
+            if (!BitConverter.IsLittleEndian)
+                Array.Reverse(vid, 0, vid.Length);
         }
 
-        public Mas.Schema.Persistence.SturdyRef SturdyRef(string srToken)
-        {
-            return SturdyRef(VatId, TcpHost, TcpPort, srToken);
-        }
+        return SturdyRef(vid, host, port, srToken);
+    }
 
-        public Task<bool> Unsave(string srToken)
-        {
-            return Task.FromResult(_srToken2Capability.TryRemove(srToken, out _));
-        }
+    public P.SturdyRef SturdyRef(string srToken)
+    {
+        return SturdyRef(VatId, TcpHost, TcpPort, srToken);
+    }
 
-        public void AddOrUpdateCrossDomainRestore(P.VatId vatId, P.IRestorer restorer)
-        {
-            _vatId2Restorer.AddOrUpdate(
-                (vatId.PublicKey0, vatId.PublicKey1, vatId.PublicKey2, vatId.PublicKey3),
-                (k) => restorer,
-                (k, oldRestorer) =>
-                {
-                    oldRestorer?.Dispose();
-                    return restorer;
-                }
-            );
-        }
+    public Task<bool> Unsave(string srToken)
+    {
+        return Task.FromResult(_srToken2Capability.TryRemove(srToken, out _));
+    }
 
-        #region implementation of Mas.Schema.Persistence.Restorer
-
-        public async Task<BareProxy> Restore(
-            Mas.Schema.Persistence.Restorer.RestoreParams ps,
-            CancellationToken cancellationToken_ = default
-        )
-        {
-            //var ds = (Capnp.DeserializerState)ps.LocalRef.Text;
-            var srToken = ps.LocalRef.Text; //Capnp.CapnpSerializable.Create<string>(ds);
-            //var sealedFor = ps.SealedFor;
-
-            // is cross domain restore? then always query the remote restorer
-            if (_extSRT2VatIdAndIntSRT.TryGetValue(srToken, out var value))
+    public void AddOrUpdateCrossDomainRestore(P.VatId vatId, P.IRestorer restorer)
+    {
+        _vatId2Restorer.AddOrUpdate(
+            (vatId.PublicKey0, vatId.PublicKey1, vatId.PublicKey2, vatId.PublicKey3),
+            k => restorer,
+            (k, oldRestorer) =>
             {
-                var (vatId, intSRT) = value;
-                if (_vatId2Restorer.TryGetValue(vatId, out var restorer))
-                {
-                    return await restorer.Restore(
-                        new Mas.Schema.Persistence.Restorer.RestoreParams
-                        {
-                            LocalRef = new Mas.Schema.Persistence.SturdyRef.Token { Text = intSRT },
-                        },
-                        cancellationToken_
-                    );
-                }
+                oldRestorer?.Dispose();
+                return restorer;
             }
+        );
+    }
 
-            // no remote restorer for cross domain available or just a normal restore
-            if (!_srToken2Capability.ContainsKey(srToken))
-                return null;
-            var cap = _srToken2Capability[srToken];
-            if (cap is BareProxy bareProxy)
-            {
-                return Proxy.Share(bareProxy);
-            }
-            else
-            {
-                var sharedProxy = Proxy.Share(cap);
-                var bareProxy2 = new BareProxy(sharedProxy.ConsumedCap);
-                return bareProxy2; // Proxy.Share(_srToken2Proxy[srToken]));
-            }
-        }
+    public struct SaveRes
+    {
+        public P.SturdyRef SturdyRef { get; set; }
+        public P.SturdyRef UnsaveSR { get; set; }
 
-        #endregion
+        //public string SturdyRefStr { get; set; }
+        //public string SRToken { get; set; }
+        //public string UnsaveSR { get; set; }
+        //public string UnsaveSRToken { get; set; }
+        public ReleaseSturdyRef UnsaveAction { get; set; }
+    }
 
-        public void Dispose()
+    public class ReleaseSturdyRef : P.Persistent.IReleaseSturdyRef
+    {
+        private readonly Func<Task<bool>> _releaseFunc;
+
+        public ReleaseSturdyRef(Func<Task<bool>> func)
         {
-            GC.SuppressFinalize(this);
-            // dispose sturdy ref caps
-            //foreach (var sr2p in _srToken2Capability)
-            //    sr2p.Value?.Dispose();
-
-            Console.WriteLine("Restorer: Dispose");
+            _releaseFunc = func;
         }
+
+        public Task<bool> Release(CancellationToken cancellationToken_ = default)
+        {
+            return _releaseFunc();
+        }
+
+        public void Dispose() { }
     }
 }
