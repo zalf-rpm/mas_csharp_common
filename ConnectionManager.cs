@@ -1,12 +1,14 @@
 ﻿using System;
 using System.Collections.Concurrent;
 using System.IO;
+using System.Linq;
 using System.Net;
 using System.Net.Security;
 using System.Net.Sockets;
 using System.Security.Authentication;
 using System.Threading;
 using System.Threading.Tasks;
+using Capnp.FrameTracing;
 using Capnp.Rpc;
 using Mas.Schema.Persistence; // added
 
@@ -16,6 +18,78 @@ namespace Mas.Infrastructure.Common
     {
         private readonly ConcurrentDictionary<string, TcpRpcClient> _connections = new();
         private TcpRpcServer _server;
+
+        // Diagnostic: set CAPNP_TRACE_DIR to an existing/creatable directory to have every
+        // outgoing TcpRpcClient connection dump its raw Tx/Rx frames to a file there.
+        private static readonly string TraceDir = Environment.GetEnvironmentVariable(
+            "CAPNP_TRACE_DIR"
+        );
+
+        private static void MaybeAttachTracer(TcpRpcClient con, string label)
+        {
+            if (string.IsNullOrWhiteSpace(TraceDir))
+                return;
+
+            try
+            {
+                Directory.CreateDirectory(TraceDir);
+                var fileName =
+                    $"{DateTime.UtcNow:yyyyMMdd-HHmmss-fff}_{SanitizeForFileName(label)}_{Guid.NewGuid():N}.trace.log";
+                var path = Path.Combine(TraceDir, fileName);
+                var writer = new StreamWriter(path, append: false) { AutoFlush = true };
+                con.AttachTracer(new RpcFrameTracer(writer, dispose: true));
+                Console.WriteLine($"ConnectionManager: tracing '{label}' to {path}");
+            }
+            catch (System.Exception e)
+            {
+                Console.WriteLine(
+                    $"ConnectionManager: failed to attach tracer for '{label}': {e.Message}"
+                );
+            }
+        }
+
+        private static string SanitizeForFileName(string s)
+        {
+            foreach (var c in Path.GetInvalidFileNameChars())
+                s = s.Replace(c, '_');
+            return s;
+        }
+
+        /// <summary>
+        ///     Diagnostic helper: renders a SturdyRef's vat address/id and token so it can be logged
+        ///     and compared at different points in its lifetime (e.g. right after it was received
+        ///     from one connection vs. right before it is forwarded as a parameter on another).
+        /// </summary>
+        public static string DescribeSturdyRef(Mas.Schema.Persistence.SturdyRef sr)
+        {
+            if (sr == null)
+                return "<null>";
+
+            var addr = sr.Vat?.Address;
+            var addrDesc =
+                addr == null ? "<null>"
+                : addr.which == Mas.Schema.Persistence.Address.WHICH.Host
+                    ? $"{addr.Host}:{addr.Port}"
+                : addr.which == Mas.Schema.Persistence.Address.WHICH.Ip6
+                    ? $"[ip6 {addr.Ip6?.Lower64:x}{addr.Ip6?.Upper64:x}]:{addr.Port}"
+                : $"<undefined which, port {addr.Port}>";
+
+            var vatId = sr.Vat?.Id;
+            var vatIdDesc =
+                vatId == null
+                    ? "<null>"
+                    : $"{vatId.PublicKey0:x16}{vatId.PublicKey1:x16}{vatId.PublicKey2:x16}{vatId.PublicKey3:x16}";
+
+            var tokenDesc =
+                sr.LocalRef == null ? "<null>"
+                : sr.LocalRef.which == Mas.Schema.Persistence.SturdyRef.Token.WHICH.Text
+                    ? $"text:{sr.LocalRef.Text}"
+                : sr.LocalRef.which == Mas.Schema.Persistence.SturdyRef.Token.WHICH.Data
+                    ? $"data:{Convert.ToBase64String((sr.LocalRef.Data ?? Array.Empty<byte>()).ToArray())}"
+                : "<undefined which>";
+
+            return $"vat={addrDesc} vatId={vatIdDesc} token={tokenDesc}";
+        }
 
         public int DefaultSslPort { get; set; } = 443;
 
@@ -101,6 +175,10 @@ namespace Mas.Infrastructure.Common
             var host = sturdyRef?.Vat?.Address?.Host ?? ""; // Hostname to use for TLS/SNI
             var addressPort = $"{host}:{port}";
 
+            Console.WriteLine(
+                $"ConnectionManager: ThreadId: {Environment.CurrentManagedThreadId} Connect(SturdyRef): {DescribeSturdyRef(sturdyRef)}"
+            );
+
             if (string.IsNullOrWhiteSpace(host))
                 return null;
 
@@ -130,6 +208,7 @@ namespace Mas.Infrastructure.Common
                         con = NoConnectionCaching
                             ? new TcpRpcClient()
                             : _connections.GetOrAdd(addressPort, new TcpRpcClient());
+                        MaybeAttachTracer(con, $"plain_{addressPort}");
                         con.Connect(connectHost, port);
                         if (con.WhenConnected == null)
                             return null;
@@ -293,6 +372,7 @@ namespace Mas.Infrastructure.Common
             var tlsCon = new TcpRpcClient();
             try
             {
+                MaybeAttachTracer(tlsCon, $"tls_{connectHost}_{port}");
                 tlsCon.InjectMidlayer(inner =>
                 {
                     var ssl = new SslStream(inner, leaveInnerStreamOpen: false);
